@@ -14,6 +14,7 @@ require_relative "smart_money/events/sweep_event"
 require_relative "smart_money/events/displacement_event"
 require_relative "smart_money/events/fvg_event"
 require_relative "smart_money/events/order_block_event"
+require_relative "smart_money/events/setup_event"
 
 require_relative "smart_money/swings/pivot_detector"
 require_relative "smart_money/swings/adaptive_swing_engine"
@@ -30,6 +31,9 @@ require_relative "smart_money/order_blocks/order_block"
 require_relative "smart_money/order_blocks/order_block_engine"
 
 require_relative "smart_money/engine"
+
+require_relative "smart_money/multi_timeframe/bias_engine"
+require_relative "smart_money/strategy/confluence_engine"
 
 module SmartMoney
   class << self
