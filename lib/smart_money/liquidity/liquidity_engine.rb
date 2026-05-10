@@ -10,18 +10,20 @@ module SmartMoney
     #                    right-side higher for min, left-side likewise)
     #      A pool emits AT MOST ONCE.
     #   2. Detect sweeps of those pools (wick pierces + body rejects) → SweepEvent
+    #      Delegates pierce/rejection/velocity logic to SweepPolicy.
     #   3. Track post-sweep reclaim (close back beyond level)         → SweepEvent(reclaimed: true)
+    #
+    # Memory pruning: swept pools older than MAX_SWEPT_AGE candles are removed.
     class LiquidityEngine
       EQUAL_TOLERANCE_FACTOR    = 0.20
       MIN_TOLERANCE             = 0.05
-      SWEEP_PIERCE_FACTOR       = 0.05
-      MIN_PIERCE                = 0.02
-      AGGRESSIVE_VELOCITY_ATR   = 1.5
       RECLAIM_LOOKAHEAD_CANDLES = 3
+      MAX_SWEPT_AGE             = 200
 
       attr_reader :pools
 
       def initialize
+        @sweep_policy  = Policies::SweepPolicy.new
         @pools         = []
         @subscribers   = []
         @candle_index  = 0
@@ -45,6 +47,7 @@ module SmartMoney
         emit_strict_pivot_pools(atr)
         detect_sweeps(candle, atr)
         detect_reclaims(candle)
+        prune_pools
       end
 
       def buy_side_pools
@@ -143,33 +146,18 @@ module SmartMoney
           next unless pool.emitted
           next if pool.last_index == @candle_index
 
-          if pool.buy_side? && pierces_above?(candle, pool, atr) && rejects_below?(candle, pool)
-            emit_sweep(candle, pool, atr, :buy_side)
-          elsif pool.sell_side? && pierces_below?(candle, pool, atr) && rejects_above?(candle, pool)
-            emit_sweep(candle, pool, atr, :sell_side)
-          end
+          result = if pool.buy_side?
+                     @sweep_policy.check_buy_side(candle: candle, level: pool.level, atr: atr)
+                   else
+                     @sweep_policy.check_sell_side(candle: candle, level: pool.level, atr: atr)
+                   end
+
+          emit_sweep(candle, pool, atr, pool.side, result) if result.sweeps?
         end
       end
 
-      def pierces_above?(candle, pool, atr)
-        candle.high > pool.level + pierce_threshold(atr)
-      end
-
-      def pierces_below?(candle, pool, atr)
-        candle.low < pool.level - pierce_threshold(atr)
-      end
-
-      def rejects_below?(candle, pool)
-        candle.close < pool.level
-      end
-
-      def rejects_above?(candle, pool)
-        candle.close > pool.level
-      end
-
-      def emit_sweep(candle, pool, atr, side)
+      def emit_sweep(candle, pool, atr, side, policy_result)
         wick_extension = side == :buy_side ? candle.high - pool.level : pool.level - candle.low
-        velocity       = aggressive_velocity?(candle, pool, atr) ? :aggressive : :normal
 
         event = Events::SweepEvent.new(
           timestamp:        candle.timestamp,
@@ -178,18 +166,13 @@ module SmartMoney
           wick_extension:   wick_extension.round(4),
           rejection_close:  candle.close,
           displacement_atr: (wick_extension / atr).round(2),
-          velocity:         velocity,
+          velocity:         policy_result.velocity,
           candle_index:     @candle_index
         )
 
         pool.mark_swept!(@candle_index, event)
         @recent_sweeps << { pool: pool, event: event, expires_at: @candle_index + RECLAIM_LOOKAHEAD_CANDLES }
         publish(event)
-      end
-
-      def aggressive_velocity?(candle, pool, atr)
-        rejection = pool.buy_side? ? (pool.level - candle.close) : (candle.close - pool.level)
-        rejection >= atr * AGGRESSIVE_VELOCITY_ATR
       end
 
       def detect_reclaims(candle)
@@ -222,12 +205,14 @@ module SmartMoney
         ))
       end
 
-      def tolerance(atr)
-        [atr * EQUAL_TOLERANCE_FACTOR, MIN_TOLERANCE].max
+      def prune_pools
+        @pools.reject! do |pool|
+          pool.swept? && (@candle_index - pool.last_index) > MAX_SWEPT_AGE
+        end
       end
 
-      def pierce_threshold(atr)
-        [atr * SWEEP_PIERCE_FACTOR, MIN_PIERCE].max
+      def tolerance(atr)
+        [atr * EQUAL_TOLERANCE_FACTOR, MIN_TOLERANCE].max
       end
 
       def publish(event)

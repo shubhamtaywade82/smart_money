@@ -11,18 +11,22 @@ module SmartMoney
     # NOT every opposite candle is an OB. Required:
     #   1. Following candle (or current) is a displacement candle (body >= MIN_DISPLACEMENT_ATR * ATR)
     #   2. Origin is the most recent opposite-direction candle within LOOKBACK
+    #
+    # Memory pruning: invalidated/mitigated OBs are removed after PRUNE_AFTER_TERMINAL candles.
     class OrderBlockEngine
       MIN_DISPLACEMENT_ATR  = 1.5
       LOOKBACK              = 8
       INVALIDATION_MARGIN   = 0.1   # atr multiples of close beyond the wrong side
       RECENT_BUFFER         = 12
+      PRUNE_AFTER_TERMINAL  = 100
 
       def initialize
-        @subscribers       = []
-        @recent            = []
-        @active_blocks     = []
+        @subscribers        = []
+        @recent             = []
+        @active_blocks      = []
         @registered_origins = {}
-        @candle_index      = 0
+        @terminal_at        = {}
+        @candle_index       = 0
       end
 
       def subscribe(&block)
@@ -35,6 +39,7 @@ module SmartMoney
         @recent << { candle: candle, index: @candle_index }
         @recent.shift while @recent.size > RECENT_BUFFER
         detect_new_ob(candle, atr) if atr&.positive?
+        prune_terminal_blocks
       end
 
       private
@@ -82,9 +87,11 @@ module SmartMoney
 
           if invalidated_by?(ob, candle, atr)
             ob.state = :invalidated
+            @terminal_at[ob.object_id] = @candle_index
             publish(invalidated_event(ob, candle))
           elsif retests?(ob, candle)
             ob.state = :mitigated
+            @terminal_at[ob.object_id] = @candle_index
             publish(mitigated_event(ob, candle))
           end
         end
@@ -135,6 +142,16 @@ module SmartMoney
           origin_index:       ob.origin_index,
           displacement_score: ob.displacement_score
         )
+      end
+
+      def prune_terminal_blocks
+        @active_blocks.reject! do |ob|
+          terminal_at = @terminal_at[ob.object_id]
+          if terminal_at && (@candle_index - terminal_at) > PRUNE_AFTER_TERMINAL
+            @registered_origins.delete(ob.origin_index)
+            true
+          end
+        end
       end
 
       def publish(event)

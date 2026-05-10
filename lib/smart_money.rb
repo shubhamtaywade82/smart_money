@@ -16,6 +16,11 @@ require_relative "smart_money/events/fvg_event"
 require_relative "smart_money/events/order_block_event"
 require_relative "smart_money/events/setup_event"
 
+require_relative "smart_money/policies/bos_confirmation_policy"
+require_relative "smart_money/policies/sweep_policy"
+require_relative "smart_money/policies/displacement_policy"
+require_relative "smart_money/policies/choch_confirmation_policy"
+
 require_relative "smart_money/swings/pivot_detector"
 require_relative "smart_money/swings/adaptive_swing_engine"
 require_relative "smart_money/structure/trend_state"

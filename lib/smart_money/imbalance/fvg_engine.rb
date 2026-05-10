@@ -11,12 +11,17 @@ module SmartMoney
     #   - FvgDetectedEvent      when a gap is created
     #   - FvgPartiallyFilledEvent when price reaches into the gap but does not traverse it
     #   - FvgMitigatedEvent     when price closes beyond the far edge of the gap
+    #
+    # Memory pruning: mitigated FVGs are removed after PRUNE_AFTER_MITIGATED candles.
     class FvgEngine
+      PRUNE_AFTER_MITIGATED = 50
+
       def initialize
-        @subscribers  = []
-        @recent       = []
-        @active_fvgs  = []
-        @candle_index = 0
+        @subscribers       = []
+        @recent            = []
+        @active_fvgs       = []
+        @mitigated_at      = {}
+        @candle_index      = 0
       end
 
       def subscribe(&block)
@@ -29,6 +34,7 @@ module SmartMoney
         @recent << candle
         @recent.shift while @recent.size > 3
         detect_new_fvg if @recent.size == 3
+        prune_mitigated_fvgs
       end
 
       private
@@ -107,6 +113,7 @@ module SmartMoney
       end
 
       def emit_mitigated(fvg, candle)
+        @mitigated_at[fvg.object_id] = @candle_index
         publish(Events::FvgMitigatedEvent.new(
           timestamp:     candle.timestamp,
           direction:     fvg.direction,
@@ -115,6 +122,13 @@ module SmartMoney
           origin_index:  fvg.origin_index,
           origin_candle: fvg.origin_candle
         ))
+      end
+
+      def prune_mitigated_fvgs
+        @active_fvgs.reject! do |fvg|
+          mitigated_at = @mitigated_at[fvg.object_id]
+          mitigated_at && (@candle_index - mitigated_at) > PRUNE_AFTER_MITIGATED
+        end
       end
 
       def publish(event)
