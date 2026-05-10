@@ -38,6 +38,10 @@ module SmartMoney
         !@swept
       end
 
+      def swept?
+        @swept
+      end
+
       def buy_side?
         @side == :buy_side
       end

@@ -5,13 +5,17 @@ module SmartMoney
     #   1. Candle body close above/below confirmed swing level (not just wick)
     #   2. Displacement >= min_displacement_atr * ATR
     #   3. The broken swing must be a confirmed structural pivot
+    #
+    # Delegates confirmation logic to BosConfirmationPolicy.
     class BosDetector
       def initialize(min_displacement_atr: 0.3, require_body_close: true)
-        @min_displacement_atr = min_displacement_atr
-        @require_body_close   = require_body_close
-        @subscribers          = []
-        @broken_highs         = {}
-        @broken_lows          = {}
+        @policy       = Policies::BosConfirmationPolicy.new(
+          min_displacement_atr: min_displacement_atr,
+          require_body_close:   require_body_close
+        )
+        @subscribers  = []
+        @broken_highs = {}
+        @broken_lows  = {}
       end
 
       def subscribe(&block)
@@ -43,22 +47,16 @@ module SmartMoney
         return nil unless swing
         return nil if @broken_highs[swing.index]
 
-        level = swing.level
-        close = candle.close
-
-        confirming_close = @require_body_close ? close > level : candle.high > level
-        return nil unless confirming_close
-
-        displacement = (close - level).abs
-        return nil unless displacement >= atr * @min_displacement_atr
+        result = @policy.check_bullish(candle: candle, level: swing.level, atr: atr)
+        return nil unless result.confirmed?
 
         @broken_highs[swing.index] = true
         event = Events::BosEvent.new(
           timestamp:        candle.timestamp,
           direction:        :bullish,
-          broken_level:     level,
-          close_price:      close,
-          displacement_atr: (displacement / atr).round(2),
+          broken_level:     swing.level,
+          close_price:      candle.close,
+          displacement_atr: (result.displacement / atr).round(2),
           candle_index:     candle_index
         )
         trend_state.on_bullish_bos(swing)
@@ -74,22 +72,16 @@ module SmartMoney
         return nil unless swing
         return nil if @broken_lows[swing.index]
 
-        level = swing.level
-        close = candle.close
-
-        confirming_close = @require_body_close ? close < level : candle.low < level
-        return nil unless confirming_close
-
-        displacement = (level - close).abs
-        return nil unless displacement >= atr * @min_displacement_atr
+        result = @policy.check_bearish(candle: candle, level: swing.level, atr: atr)
+        return nil unless result.confirmed?
 
         @broken_lows[swing.index] = true
         event = Events::BosEvent.new(
           timestamp:        candle.timestamp,
           direction:        :bearish,
-          broken_level:     level,
-          close_price:      close,
-          displacement_atr: (displacement / atr).round(2),
+          broken_level:     swing.level,
+          close_price:      candle.close,
+          displacement_atr: (result.displacement / atr).round(2),
           candle_index:     candle_index
         )
         trend_state.on_bearish_bos(swing)

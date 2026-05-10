@@ -16,6 +16,8 @@ Built for: Rails apps, algo-trading systems, WebSocket price feeds, and backtest
 - **Order Block engine** — validated OBs from displacement origin; tracks mitigation and invalidation
 - **Multi-timeframe bias** — `MultiTimeframe::BiasEngine` orchestrates HTF + LTF engines for alignment queries
 - **Confluence engine** — combines sweep + opposite-direction displacement (+ optional OB) into scored `SetupEvent`s
+- **Policies layer** — stateless `BosConfirmationPolicy`, `SweepPolicy`, `DisplacementPolicy`, and `ChochConfirmationPolicy` extract validation rules from detectors; easily tested and swappable
+- **Memory-safe long sessions** — swept pools, mitigated FVGs, and terminal order blocks are pruned automatically; engines can run indefinitely without unbounded growth
 - **Pub/sub event system** — subscribe to typed events per engine instance
 - **Zero future leakage** — events are never emitted using data from future candles
 - **No repainting** — confirmed events are never retracted
@@ -233,6 +235,10 @@ engine = SmartMoney::Engine.new(
 **Deterministic** — given the same candle sequence, two engine instances always produce identical events. No internal randomness, no `Time.now` inside the hot path.
 
 **Trend-aware BOS/CHOCH** — in a bullish trend, a break below a swing low is routed to CHOCH (not BOS) and vice versa, matching institutional SMC semantics.
+
+**Policies pattern** — validation rules live in dedicated, stateless policy objects (`Policies::BosConfirmationPolicy`, `Policies::SweepPolicy`, `Policies::DisplacementPolicy`, `Policies::ChochConfirmationPolicy`). Each returns a typed `Data.define` Result. Detectors stay thin; policies are independently testable and configurable.
+
+**Memory pruning** — `LiquidityEngine` removes swept pools older than 200 candles; `FvgEngine` removes mitigated FVGs after 50 candles; `OrderBlockEngine` removes invalidated/mitigated OBs after 100 candles. All thresholds are named constants.
 
 ## BDD Spec Suite
 
