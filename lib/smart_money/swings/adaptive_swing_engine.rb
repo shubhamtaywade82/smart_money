@@ -11,6 +11,9 @@ module SmartMoney
       # Displacement threshold to classify external vs internal swing
       EXTERNAL_DISPLACEMENT_FACTOR = 0.5
 
+      BASE_LEFT  = 2
+      BASE_RIGHT = 2
+
       attr_reader :atr, :confirmed_highs, :confirmed_lows, :candle_count
 
       def initialize(atr_period: SmartMoney.configuration.default_atr_period,
@@ -25,7 +28,9 @@ module SmartMoney
         @confirmed_highs = []
         @confirmed_lows  = []
         @subscribers    = []
-        @pivot_detector = PivotDetector.new(left: 2, right: 2)
+        @current_left   = BASE_LEFT
+        @current_right  = BASE_RIGHT
+        @pivot_detector = PivotDetector.new(left: BASE_LEFT, right: BASE_RIGHT)
       end
 
       def process(candle)
@@ -74,8 +79,13 @@ module SmartMoney
         return unless @atr && @baseline_atr && @baseline_atr.positive?
 
         atr_ratio = @atr / @baseline_atr
-        n = Utils::MathUtils.clamp(2, 5, (atr_ratio * 3).round)
-        @pivot_detector = PivotDetector.new(left: n, right: n) if n != @pivot_detector.left
+        # Scale from BASE_LEFT: normal vol (ratio≈1) → BASE_LEFT bars; rising vol → wider
+        n = Utils::MathUtils.clamp(BASE_LEFT, 5, (BASE_LEFT * atr_ratio).round)
+        return if n == @current_left
+
+        @current_left  = n
+        @current_right = n
+        @pivot_detector = PivotDetector.new(left: n, right: n)
       end
 
       def detect_pivot

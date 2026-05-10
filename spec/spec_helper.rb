@@ -1,5 +1,7 @@
 require "smart_money"
 
+Dir[File.join(__dir__, "support", "**", "*.rb")].sort.each { |f| require f }
+
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
     expectations.include_chain_clauses_in_custom_matcher_descriptions = true
@@ -17,22 +19,13 @@ RSpec.configure do |config|
   Kernel.srand config.seed
 
   config.after(:each) { SmartMoney.reset_configuration! }
+
+  config.include CandleFactory
+  config.include MarketScenarioDsl, :scenario
 end
 
-# Helpers for building test candles
+# Legacy candle helpers kept for Phase 1 specs
 module CandleHelpers
-  def candle(open:, high:, low:, close:, volume: 1000, timestamp: Time.now)
-    SmartMoney::Candle.new(
-      timestamp: timestamp,
-      open:      open,
-      high:      high,
-      low:       low,
-      close:     close,
-      volume:    volume
-    )
-  end
-
-  # Build a trending sequence of bullish candles ascending by `step`
   def bullish_candles(count, start: 100.0, step: 1.0, wick: 0.2)
     count.times.map do |i|
       base = start + (i * step)
@@ -41,7 +34,6 @@ module CandleHelpers
     end
   end
 
-  # Build a trending sequence of bearish candles descending by `step`
   def bearish_candles(count, start: 100.0, step: 1.0, wick: 0.2)
     count.times.map do |i|
       base = start - (i * step)
@@ -50,7 +42,6 @@ module CandleHelpers
     end
   end
 
-  # Doji/flat candles (chop)
   def chop_candles(count, around: 100.0, wick: 0.1)
     count.times.map do |i|
       candle(open: around, high: around + wick, low: around - wick, close: around,

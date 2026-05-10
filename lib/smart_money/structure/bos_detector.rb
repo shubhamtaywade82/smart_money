@@ -36,6 +36,9 @@ module SmartMoney
       private
 
       def check_bullish_bos(candle, swing_engine, atr, candle_index, trend_state)
+        # In a bearish trend, a break above a swing high is CHOCH territory, not BOS
+        return nil if trend_state.bearish?
+
         swing = swing_engine.last_confirmed_high
         return nil unless swing
         return nil if @broken_highs[swing.index]
@@ -64,6 +67,9 @@ module SmartMoney
       end
 
       def check_bearish_bos(candle, swing_engine, atr, candle_index, trend_state)
+        # In a bullish trend, a break below a swing low is CHOCH territory, not BOS
+        return nil if trend_state.bullish?
+
         swing = swing_engine.last_confirmed_low
         return nil unless swing
         return nil if @broken_lows[swing.index]
