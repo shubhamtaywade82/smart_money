@@ -1,161 +1,139 @@
-# Liquidity Engine BDD Spec
-#
-# Defines the contract for SmartMoney::Liquidity::SweepDetector,
-# EqualHighsLows detector, and LiquidityPool.
-#
-# These specs are RED until Phase 2 implements the LiquidityEngine.
-# They serve as the executable design contract.
+RSpec.describe "resting liquidity registration", :liquidity do
+  let(:engine)         { SmartMoney::Engine.new }
+  let(:emitted_pools)  { [] }
+  let(:emitted_sweeps) { [] }
 
-RSpec.describe "Liquidity Engine", :scenario do
-  scenario "detects equal highs as resting buy-side liquidity" do
-    when_candles_processed do
-      # Two candles touching the same high — engineered liquidity target
-      candle(open: 97, high: 100, low: 96, close: 98)
-      candle(open: 98, high: 100, low: 97, close: 98.5)
-      # Pullback — leaving the level intact (resting)
-      candle(open: 98, high: 99,  low: 96, close: 97)
-      candle(open: 97, high: 98,  low: 95, close: 96)
+  before do
+    engine.subscribe(:liquidity_pool) { |e| emitted_pools  << e }
+    engine.subscribe(:sweep)          { |e| emitted_sweeps << e }
+  end
+
+  context "when two candles touch the same high before pulling back" do
+    before do
+      engine.on_candle(candle(open: 97, high: 100, low: 96, close: 98))
+      engine.on_candle(candle(open: 98, high: 100, low: 97, close: 98.5))
+      engine.on_candle(candle(open: 98, high: 99,  low: 96, close: 97))
+      engine.on_candle(candle(open: 97, high: 98,  low: 95, close: 96))
     end
 
-    then_expect do
-      # LiquidityEngine not yet implemented — mark pending
-      pools = events(:liquidity_pool)
-      bsl = pools.select { |e| e.side == :buy_side && e.level.round == 100 }
-      expect(bsl).not_to be_empty
+    it "registers a buy-side liquidity pool at the engineered highs" do
+      expect(emitted_pools).to contain_buy_side_pool(near: 100)
     end
   end
 
-  scenario "detects equal lows as resting sell-side liquidity" do
-    when_candles_processed do
-      candle(open: 103, high: 104, low: 100, close: 102)
-      candle(open: 102, high: 103, low: 100, close: 101.5)
-      candle(open: 102, high: 103, low: 101, close: 102)
-      candle(open: 103, high: 104, low: 102, close: 103)
+  context "when two candles touch the same low before recovery" do
+    before do
+      engine.on_candle(candle(open: 103, high: 104, low: 100, close: 102))
+      engine.on_candle(candle(open: 102, high: 103, low: 100, close: 101.5))
+      engine.on_candle(candle(open: 102, high: 103, low: 101, close: 102))
+      engine.on_candle(candle(open: 103, high: 104, low: 102, close: 103))
     end
 
-    then_expect do
-      pools = events(:liquidity_pool)
-      ssl = pools.select { |e| e.side == :sell_side && e.level.round == 100 }
-      expect(ssl).not_to be_empty
+    it "registers a sell-side liquidity pool at the engineered lows" do
+      expect(emitted_pools).to contain_sell_side_pool(near: 100)
     end
   end
 
-  scenario "marks liquidity as swept when price trades through and rejects" do
-    given_market do
-      equal_highs(at: 100)
+  context "ATR-tolerance clustering" do
+    context "when adjacent highs sit within ATR tolerance" do
+      before do
+        engine.on_candle(candle(open: 97, high: 100.00, low: 96, close: 98))
+        engine.on_candle(candle(open: 98, high: 100.04, low: 97, close: 98.5))
+        engine.on_candle(candle(open: 98, high: 99,     low: 96, close: 97))
+        engine.on_candle(candle(open: 97, high: 98,     low: 95, close: 96))
+      end
+
+      it "merges them into a single buy-side liquidity level" do
+        buy_pools = emitted_pools.select(&:buy_side?)
+        expect(buy_pools.size).to eq 1
+        expect(buy_pools.first.level).to be_within(0.1).of(100)
+      end
     end
 
-    when_candles_processed do
-      # Wick pierces above 100 then closes back below — sweep
-      sweep_above(level: 100, wick: 1.5, rejection_close: 98.5)
-    end
+    context "when highs sit further apart than ATR tolerance" do
+      before do
+        engine.on_candle(candle(open: 97, high: 100, low: 96, close: 98))
+        engine.on_candle(candle(open: 98, high: 102, low: 97, close: 99))
+        engine.on_candle(candle(open: 99, high: 100, low: 97, close: 98))
+        engine.on_candle(candle(open: 98, high: 99,  low: 96, close: 97))
+      end
 
-    then_expect do
-      liquidity_to_be_swept(:buy_side)
-    end
-  end
+      it "preserves them as distinct buy-side liquidity levels" do
+        levels   = emitted_pools.select(&:buy_side?).map(&:level)
+        near_100 = levels.any? { |l| (l - 100).abs <= 0.5 }
+        near_102 = levels.any? { |l| (l - 102).abs <= 0.5 }
 
-  scenario "does not classify continuation acceptance as a sweep" do
-    given_market do
-      equal_highs(at: 100)
-    end
-
-    when_candles_processed do
-      # Price CLOSES above 100 with body — this is acceptance, not a sweep
-      candle(open: 99, high: 102, low: 98.5, close: 101.5)
-    end
-
-    then_expect do
-      sweeps = events(:sweep)
-      expect(sweeps.select { |e| e.side == :buy_side }).to be_empty
-    end
-  end
-
-  scenario "classifies aggressive sweeps with displacement candles as high-velocity" do
-    given_market do
-      equal_highs(at: 200)
-    end
-
-    when_candles_processed do
-      # Big displacement candle — sweeps above 200 and closes well below
-      candle(open: 199, high: 204, low: 195, close: 196, volume: 10_000)
-    end
-
-    then_expect do
-      sweeps = events(:sweep)
-      aggressive = sweeps.select { |e| e.respond_to?(:velocity) && e.velocity == :aggressive }
-      expect(aggressive).not_to be_empty
-    end
-  end
-
-  scenario "sweep followed by displacement constitutes a valid liquidity sweep reversal" do
-    given_market do
-      equal_highs(at: 100)
-    end
-
-    when_candles_processed do
-      sweep_above(level: 100, wick: 1.0, rejection_close: 99)
-      displacement_down(close: 96, size: 4.0)
-    end
-
-    then_expect do
-      liquidity_to_be_swept(:buy_side)
-      displacement_to_be_bearish
-    end
-  end
-
-  scenario "reclaim after sweep invalidates the sweep signal" do
-    given_market do
-      equal_highs(at: 100)
-    end
-
-    when_candles_processed do
-      sweep_above(level: 100, wick: 0.5, rejection_close: 99.5)
-      # Price immediately climbs back and closes above — reclaim
-      candle(open: 99.5, high: 102, low: 99, close: 101.5)
-    end
-
-    then_expect do
-      sweeps = events(:sweep)
-      reclaimed = sweeps.select { |e| e.respond_to?(:reclaimed?) && e.reclaimed? }
-      expect(reclaimed).not_to be_empty
+        expect(near_100).to be(true), "expected a buy-side pool near 100, got #{levels.inspect}"
+        expect(near_102).to be(true), "expected a buy-side pool near 102, got #{levels.inspect}"
+      end
     end
   end
 end
 
-RSpec.describe "Liquidity: equal-high/low tolerance", :scenario do
-  scenario "groups highs within ATR tolerance into a single buy-side liquidity level" do
-    when_candles_processed do
-      # Two highs 0.04 apart — should be treated as same EQH cluster
-      candle(open: 97, high: 100.00, low: 96, close: 98)
-      candle(open: 98, high: 100.04, low: 97, close: 98.5)
-      candle(open: 98, high: 99,     low: 96, close: 97)
-      candle(open: 97, high: 98,     low: 95, close: 96)
+RSpec.describe "liquidity sweep classification", :liquidity do
+  context "during bearish reversal conditions" do
+    context "when buy-side liquidity is pierced and price rejects below" do
+      include_context "equal_highs_present"
+      before { engine.on_candle(sweep_above(level: 100, wick: 1.5, rejection_close: 98.5)) }
+
+      it "fires a buy-side sweep event" do
+        expect(emitted_events[:sweep]).to contain_buy_side_sweep
+      end
     end
 
-    then_expect do
-      buy_pools = events(:liquidity_pool).select(&:buy_side?)
-      expect(buy_pools.size).to eq 1
-      expect(buy_pools.first.level).to be_within(0.1).of(100)
+    context "when a high-momentum candle blasts through resting liquidity" do
+      include_context "equal_highs_present"
+      let(:liquidity_level) { 200 }
+
+      before do
+        engine.on_candle(candle(open: 199, high: 204, low: 195, close: 196, volume: 10_000))
+      end
+
+      it "classifies the sweep velocity as aggressive" do
+        expect(emitted_events[:sweep]).to contain_aggressive_sweep
+      end
+    end
+
+    context "when a sweep is followed by bearish displacement" do
+      include_context "equal_highs_present"
+
+      before do
+        engine.on_candle(sweep_above(level: 100, wick: 1.0, rejection_close: 99))
+        engine.on_candle(displacement_down(close: 96, size: 4.0))
+      end
+
+      it "produces a buy-side sweep event" do
+        expect(emitted_events[:sweep]).to contain_buy_side_sweep
+      end
+
+      it "produces a bearish displacement event" do
+        expect(emitted_events[:displacement]).to have_displacement(:bearish)
+      end
     end
   end
 
-  scenario "keeps highs separated by more than ATR as distinct buy-side liquidity levels" do
-    when_candles_processed do
-      candle(open: 97, high: 100, low: 96, close: 98)
-      candle(open: 98, high: 102, low: 97, close: 99)
-      candle(open: 99, high: 100, low: 97, close: 98)
-      candle(open: 98, high: 99,  low: 96, close: 97)
+  context "under invalid sweep conditions" do
+    context "when the candle closes above the level (continuation, not rejection)" do
+      include_context "equal_highs_present"
+      before { engine.on_candle(candle(open: 99, high: 102, low: 98.5, close: 101.5)) }
+
+      it "does not classify the candle as a buy-side sweep" do
+        non_reclaim = emitted_events[:sweep].reject(&:reclaimed?)
+        expect(non_reclaim.select(&:buy_side?)).to be_empty
+      end
     end
 
-    then_expect do
-      buy_pools  = events(:liquidity_pool).select(&:buy_side?)
-      levels     = buy_pools.map(&:level)
-      near_100   = levels.any? { |l| (l - 100).abs <= 0.5 }
-      near_102   = levels.any? { |l| (l - 102).abs <= 0.5 }
+    context "when price reclaims the swept level on the next candle" do
+      include_context "equal_highs_present"
 
-      expect(near_100).to be(true), "expected a buy-side pool near 100, got #{levels.inspect}"
-      expect(near_102).to be(true), "expected a buy-side pool near 102, got #{levels.inspect}"
+      before do
+        engine.on_candle(sweep_above(level: 100, wick: 0.5, rejection_close: 99.5))
+        engine.on_candle(candle(open: 99.5, high: 102, low: 99, close: 101.5))
+      end
+
+      it "emits a follow-up reclaim event invalidating the sweep" do
+        expect(emitted_events[:sweep]).to contain_reclaimed_sweep
+      end
     end
   end
 end

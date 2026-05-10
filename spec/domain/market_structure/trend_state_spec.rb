@@ -1,49 +1,52 @@
-RSpec.describe SmartMoney::Structure::TrendState do
-  subject(:state) { described_class.new }
+RSpec.describe "market structure trend state", :market_structure do
+  subject(:state) { SmartMoney::Structure::TrendState.new }
 
-  let(:pivot) { SmartMoney::Swings::PivotDetector::Pivot.new(direction: :high, level: 105.0, index: 10, timestamp: Time.now) }
-  let(:low_pivot) { SmartMoney::Swings::PivotDetector::Pivot.new(direction: :low, level: 95.0, index: 20, timestamp: Time.now) }
+  let(:high_pivot) { SmartMoney::Swings::PivotDetector::Pivot.new(direction: :high, level: 105.0, index: 10, timestamp: Time.now) }
+  let(:low_pivot)  { SmartMoney::Swings::PivotDetector::Pivot.new(direction: :low,  level:  95.0, index: 20, timestamp: Time.now) }
 
-  it "starts in :ranging state" do
-    expect(state.state).to eq :ranging
-    expect(state.established?).to be false
+  context "before any structural event" do
+    it "starts in a ranging state with no established direction" do
+      expect(state.state).to eq :ranging
+      expect(state.established?).to be false
+    end
   end
 
-  describe "#on_bullish_bos" do
-    it "transitions to :bullish after first bullish BOS" do
-      state.on_bullish_bos(pivot)
+  context "when a bullish break of structure occurs" do
+    it "transitions to a bullish trend" do
+      state.on_bullish_bos(high_pivot)
       expect(state.bullish?).to be true
       expect(state.established?).to be true
     end
 
-    it "stores last_hh" do
-      state.on_bullish_bos(pivot)
-      expect(state.last_hh).to eq pivot
+    it "records the broken swing high as the latest higher high" do
+      state.on_bullish_bos(high_pivot)
+      expect(state.last_hh).to eq high_pivot
     end
 
-    it "resets bearish_bos_count" do
+    it "resets the prior bearish counter so the trend cleanly flips" do
       state.on_bearish_bos(low_pivot)
-      state.on_bullish_bos(pivot)
+      state.on_bullish_bos(high_pivot)
       expect(state.bearish_bos_count).to eq 0
     end
   end
 
-  describe "#on_bearish_bos" do
-    it "transitions to :bearish after first bearish BOS" do
+  context "when a bearish break of structure occurs" do
+    it "transitions to a bearish trend" do
       state.on_bearish_bos(low_pivot)
       expect(state.bearish?).to be true
     end
 
-    it "stores last_ll" do
+    it "records the broken swing low as the latest lower low" do
       state.on_bearish_bos(low_pivot)
       expect(state.last_ll).to eq low_pivot
     end
   end
 
-  describe "state transitions" do
-    it "switches from bullish to bearish via on_bearish_bos" do
-      state.on_bullish_bos(pivot)
+  context "during a full trend reversal" do
+    it "switches from bullish to bearish on a bearish BOS" do
+      state.on_bullish_bos(high_pivot)
       expect(state.bullish?).to be true
+
       state.on_bearish_bos(low_pivot)
       expect(state.bearish?).to be true
     end

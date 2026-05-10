@@ -8,7 +8,7 @@
 # These tests run against the live engine (not pending) because the Phase 1
 # engine must already satisfy both properties.
 
-RSpec.describe "Deterministic Replay" do
+RSpec.describe "deterministic replay invariants", :replay do
   include CandleFactory
 
   # Synthetic sequence with known BOS/CHOCH points
@@ -34,17 +34,15 @@ RSpec.describe "Deterministic Replay" do
     bearish + bounce
   end
 
-  describe "no future leakage" do
-    it "events emitted at candle N never reference data from candle N+1 or later" do
+  context "preventing future leakage" do
+    it "stamps every emitted event with a timestamp at or before the current candle" do
       engine = SmartMoney::Engine.new
       emitted_by_index = {}
 
       engine.subscribe(:bos) { |e| emitted_by_index[engine.candle_count] = e }
 
       base_sequence.each do |c|
-        before_count = engine.candle_count
         engine.on_candle(c)
-        # Any event emitted just now must not reference future timestamps
         if emitted_by_index[engine.candle_count]
           event = emitted_by_index[engine.candle_count]
           expect(event.timestamp).to be <= c.timestamp
@@ -52,7 +50,7 @@ RSpec.describe "Deterministic Replay" do
       end
     end
 
-    it "swing events carry the timestamp of the pivot candle, not the confirmation candle" do
+    it "stamps swing events with the pivot candle's time, never the confirmation candle's" do
       engine = SmartMoney::Engine.new
       swing_events = []
       engine.subscribe(:swing) { |e| swing_events << { event: e, emitted_at_count: engine.candle_count } }
@@ -60,18 +58,14 @@ RSpec.describe "Deterministic Replay" do
       base_sequence.each { |c| engine.on_candle(c) }
 
       swing_events.each do |entry|
-        event       = entry[:event]
-        emitted_at  = entry[:emitted_at_count]
-        pivot_ts    = event.timestamp
-        emission_ts = base_sequence[[emitted_at - 1, 0].max].timestamp
-        # The pivot candle must precede or equal the emission candle in time
-        expect(pivot_ts).to be <= emission_ts
+        emission_ts = base_sequence[[entry[:emitted_at_count] - 1, 0].max].timestamp
+        expect(entry[:event].timestamp).to be <= emission_ts
       end
     end
   end
 
-  describe "determinism" do
-    it "two engines fed the same candles in the same order produce identical BOS events" do
+  context "determinism across runs" do
+    it "two engines fed the same candle stream emit identical BOS sequences" do
       bos1 = []
       bos2 = []
 
@@ -87,7 +81,7 @@ RSpec.describe "Deterministic Replay" do
       expect(bos1).to eq bos2
     end
 
-    it "events are never retracted (no repainting)" do
+    it "never retracts an event once it has been emitted" do
       engine = SmartMoney::Engine.new
       emitted = []
       engine.subscribe(:bos)   { |e| emitted << [:bos,   e.direction, e.broken_level] }
@@ -106,7 +100,7 @@ RSpec.describe "Deterministic Replay" do
       end
     end
 
-    it "random seed does not affect engine output (no internal randomness)" do
+    it "produces identical output regardless of the global random seed" do
       results_a = []
       results_b = []
 
@@ -121,8 +115,8 @@ RSpec.describe "Deterministic Replay" do
     end
   end
 
-  describe "edge cases" do
-    it "handles a single-candle spike that wicks above a swing high but closes below" do
+  context "robustness under abnormal stream conditions" do
+    it "rejects a single-candle wick spike that closes back below the swing" do
       engine = SmartMoney::Engine.new
       bos_events = []
       engine.subscribe(:bos) { |e| bos_events << e }
@@ -140,7 +134,7 @@ RSpec.describe "Deterministic Replay" do
       expect(bullish_bos).to be_empty
     end
 
-    it "handles duplicate timestamps without crashing" do
+    it "ingests duplicate timestamps without raising" do
       engine = SmartMoney::Engine.new
       ts = Time.at(1_700_000_000)
       c1 = candle(open: 100, high: 101, low: 99, close: 100.5, timestamp: ts)
@@ -149,7 +143,7 @@ RSpec.describe "Deterministic Replay" do
       expect { engine.on_candle(c1); engine.on_candle(c2) }.not_to raise_error
     end
 
-    it "processes 1000+ candles without memory explosion" do
+    it "caps internal series memory at the configured ring-buffer capacity over a long stream" do
       engine = SmartMoney::Engine.new
       1100.times do |i|
         c = candle(open: 100 + Math.sin(i * 0.1) * 5,
@@ -165,7 +159,7 @@ RSpec.describe "Deterministic Replay" do
         .to be <= SmartMoney.configuration.default_series_capacity
     end
 
-    it "handles a sequence with zero volume candles" do
+    it "ingests zero-volume candles without raising" do
       engine = SmartMoney::Engine.new
       [
         candle(open: 100, high: 101, low: 99, close: 100.5, volume: 0),

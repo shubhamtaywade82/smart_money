@@ -1,45 +1,58 @@
-RSpec.describe SmartMoney::MultiTimeframe::BiasEngine do
-  subject(:bias) { described_class.new(htf_timeframe: "1h", ltf_timeframe: "5m") }
+RSpec.describe "multi-timeframe bias orchestration", :multi_timeframe do
+  subject(:bias) { SmartMoney::MultiTimeframe::BiasEngine.new(htf_timeframe: "1h", ltf_timeframe: "5m") }
 
-  describe "isolated state per timeframe" do
-    it "tracks HTF and LTF trend states independently" do
-      htf_bull = bull_sequence(from: 100, step: 2, count: 8)
-      ltf_bear = bear_sequence(from: 110, step: 1, count: 8)
-
-      htf_bull.each { |c| bias.on_htf_candle(c) }
-      ltf_bear.each { |c| bias.on_ltf_candle(c) }
+  context "isolated state across timeframes" do
+    it "advances HTF and LTF candle counts independently" do
+      bull_sequence(from: 100, step: 2, count: 8).each { |c| bias.on_htf_candle(c) }
+      bear_sequence(from: 110, step: 1, count: 8).each { |c| bias.on_ltf_candle(c) }
 
       expect(bias.htf.candle_count).to eq 8
       expect(bias.ltf.candle_count).to eq 8
     end
   end
 
-  describe "alignment queries" do
-    it "reports aligned_long when HTF state is bullish" do
-      bias.htf.trend_state.on_bullish_bos(double(level: 100, index: 1))
+  context "during HTF bullish conditions" do
+    before { bias.htf.trend_state.on_bullish_bos(double(level: 100, index: 1)) }
 
+    it "reports long alignment for the strategy layer" do
       expect(bias.aligned_long?).to be true
+    end
+
+    it "rejects short alignment" do
       expect(bias.aligned_short?).to be false
-      expect(bias.aligned_with?(:long)).to be true
+    end
+
+    it "answers aligned_with for both :long and :bullish" do
+      expect(bias.aligned_with?(:long)).to    be true
       expect(bias.aligned_with?(:bullish)).to be true
     end
+  end
 
-    it "reports aligned_short when HTF state is bearish" do
-      bias.htf.trend_state.on_bearish_bos(double(level: 100, index: 1))
+  context "during HTF bearish conditions" do
+    before { bias.htf.trend_state.on_bearish_bos(double(level: 100, index: 1)) }
 
+    it "reports short alignment for the strategy layer" do
       expect(bias.aligned_short?).to be true
-      expect(bias.aligned_long?).to be false
-      expect(bias.aligned_with?(:short)).to be true
     end
 
-    it "reports neither alignment while ranging" do
+    it "rejects long alignment" do
+      expect(bias.aligned_long?).to be false
+    end
+
+    it "answers aligned_with for :short" do
+      expect(bias.aligned_with?(:short)).to be true
+    end
+  end
+
+  context "while no HTF structure has formed" do
+    it "reports neither long nor short alignment" do
       expect(bias.aligned_long?).to be false
       expect(bias.aligned_short?).to be false
     end
   end
 
-  describe "HTF bias drives LTF trade decisions" do
-    it "agrees with LTF bullish setup only when HTF trend is bullish" do
+  context "when HTF and LTF agree on bullish bias" do
+    it "exposes the agreement to consumers via htf_bias and ltf_state" do
       bias.htf.trend_state.on_bullish_bos(double(level: 100, index: 1))
       bias.ltf.trend_state.on_bullish_bos(double(level: 100, index: 1))
 

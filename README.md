@@ -266,7 +266,7 @@ spec/
 Specs read like institutional trading playbooks. Canonical context format:
 
 ```ruby
-RSpec.describe "Liquidity sweep detection" do
+RSpec.describe "liquidity sweep detection", :liquidity do
   context "during bearish reversal conditions" do
     context "when buyside liquidity is swept and price rejects" do
       include_context "equal_highs_present"
@@ -277,6 +277,30 @@ RSpec.describe "Liquidity sweep detection" do
     end
   end
 end
+```
+
+Top-level `describe` is a domain capability phrase, not a class name.
+First context describes the **market regime** (`during X`).
+Second context describes the **trigger condition** (`when Y`).
+Each `it` describes an **observable behavior** (`confirms X`, `rejects Y`, `emits Z`).
+
+The documentation formatter output (`bundle exec rspec --format documentation`) reads as executable trading playbooks — not Rails CRUD unit tests.
+
+#### Spec tags
+
+Every domain spec carries a metadata tag so strategies can be exercised in isolation:
+
+```bash
+bundle exec rspec --tag market_structure
+bundle exec rspec --tag liquidity
+bundle exec rspec --tag displacement
+bundle exec rspec --tag fvg
+bundle exec rspec --tag order_block
+bundle exec rspec --tag confluence
+bundle exec rspec --tag multi_timeframe
+bundle exec rspec --tag replay
+bundle exec rspec --tag system
+bundle exec rspec --tag integration
 ```
 
 #### Shared contexts
