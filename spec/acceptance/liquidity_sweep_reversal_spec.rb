@@ -18,7 +18,6 @@ RSpec.describe "Acceptance: Liquidity Sweep Reversal", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: LiquidityEngine required for sweep event"
       liquidity_to_be_swept(:buy_side)
       displacement_to_be_bearish
     end
@@ -35,7 +34,6 @@ RSpec.describe "Acceptance: Liquidity Sweep Reversal", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: LiquidityEngine required for sweep event"
       liquidity_to_be_swept(:sell_side)
       displacement_to_be_bullish
     end
@@ -53,7 +51,6 @@ RSpec.describe "Acceptance: Liquidity Sweep Reversal", :scenario do
     end
 
     then_expect do
-      skip "Phase 2: LiquidityEngine required for sweep detection"
       sweeps = events(:sweep)
       expect(sweeps.select { |e| e.side == :buy_side }).to be_empty
     end

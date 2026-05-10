@@ -19,7 +19,6 @@ RSpec.describe "Order Block Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 3: OrderBlockEngine not yet implemented"
       obs = events(:order_block)
       bullish = obs.select { |e| e.direction == :bullish }
       expect(bullish).not_to be_empty
@@ -37,7 +36,6 @@ RSpec.describe "Order Block Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 3: OrderBlockEngine not yet implemented"
       obs = events(:order_block)
       bearish = obs.select { |e| e.direction == :bearish }
       expect(bearish).not_to be_empty
@@ -59,7 +57,6 @@ RSpec.describe "Order Block Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 3: OrderBlockEngine not yet implemented"
       obs = events(:order_block)
       mitigated = obs.select { |e| e.respond_to?(:mitigated?) && e.mitigated? }
       expect(mitigated).not_to be_empty
@@ -78,7 +75,6 @@ RSpec.describe "Order Block Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 3: OrderBlockEngine not yet implemented"
       obs = events(:order_block)
       invalidated = obs.select { |e| e.respond_to?(:invalidated?) && e.invalidated? }
       expect(invalidated).not_to be_empty
@@ -94,7 +90,6 @@ RSpec.describe "Order Block Engine", :scenario do
     end
 
     then_expect do
-      skip "Phase 3: OrderBlockEngine not yet implemented"
       obs = events(:order_block)
       expect(obs).to be_empty
     end

@@ -14,7 +14,6 @@ RSpec.describe "Fair Value Gap Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 3: FVG not yet implemented"
       fvgs = events(:fvg)
       bullish = fvgs.select { |e| e.direction == :bullish }
       expect(bullish).not_to be_empty
@@ -33,7 +32,6 @@ RSpec.describe "Fair Value Gap Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 3: FVG not yet implemented"
       fvgs = events(:fvg)
       bearish = fvgs.select { |e| e.direction == :bearish }
       expect(bearish).not_to be_empty
@@ -51,7 +49,6 @@ RSpec.describe "Fair Value Gap Engine", :scenario do
     end
 
     then_expect do
-      skip "Phase 3: FVG not yet implemented"
       expect(events(:fvg)).to be_empty
     end
   end
@@ -66,7 +63,6 @@ RSpec.describe "Fair Value Gap Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 3: FVG not yet implemented"
       fvgs = events(:fvg)
       partially_filled = fvgs.select { |e| e.respond_to?(:partially_filled?) && e.partially_filled? }
       expect(partially_filled).not_to be_empty
@@ -83,7 +79,6 @@ RSpec.describe "Fair Value Gap Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 3: FVG not yet implemented"
       fvgs = events(:fvg)
       mitigated = fvgs.select { |e| e.respond_to?(:mitigated?) && e.mitigated? }
       expect(mitigated).not_to be_empty
