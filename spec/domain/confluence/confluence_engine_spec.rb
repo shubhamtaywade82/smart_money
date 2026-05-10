@@ -1,9 +1,11 @@
-RSpec.describe SmartMoney::Strategy::ConfluenceEngine do
+RSpec.describe "sweep + displacement confluence", :confluence do
   subject(:setups) { [] }
 
   let(:engine)     { SmartMoney::Engine.new }
   let!(:confluence) do
-    described_class.new(engine: engine).tap { |c| c.subscribe { |e| setups << e } }
+    SmartMoney::Strategy::ConfluenceEngine.new(engine: engine).tap do |c|
+      c.subscribe { |e| setups << e }
+    end
   end
 
   context "during bullish reversal conditions" do

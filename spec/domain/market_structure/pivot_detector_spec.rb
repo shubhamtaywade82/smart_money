@@ -1,5 +1,5 @@
-RSpec.describe SmartMoney::Swings::PivotDetector do
-  subject(:detector) { described_class.new(left: 2, right: 2) }
+RSpec.describe "swing pivot confirmation", :market_structure do
+  subject(:detector) { SmartMoney::Swings::PivotDetector.new(left: 2, right: 2) }
 
   let(:series) { SmartMoney::CandleSeries.new(capacity: 50) }
 
@@ -10,55 +10,49 @@ RSpec.describe SmartMoney::Swings::PivotDetector do
     end
   end
 
-  describe "pivot high detection" do
-    it "detects a pivot high when center is higher than left and right bars" do
-      # With left=2, right=2: candidate is at series[-3]; confirmed after right-side bars are seen.
-      # After pushing 5 candles, candidate = candle[2] (high=105).
-      push_candles([
-        [100, 98], [102, 100], [105, 103], [103, 101], [101, 99]
-      ])
-      pivot = detector.detect(series, 5)
-      expect(pivot).not_to be_nil
-      expect(pivot.direction).to eq :high
-      expect(pivot.level).to eq 105
-    end
+  context "during a clean rally followed by reversal" do
+    context "when the center bar's high exceeds both neighbours" do
+      it "confirms the center bar as a swing high" do
+        push_candles([[100, 98], [102, 100], [105, 103], [103, 101], [101, 99]])
+        pivot = detector.detect(series, 5)
 
-    it "returns nil when not enough bars" do
+        expect(pivot.direction).to eq :high
+        expect(pivot.level).to     eq 105
+      end
+    end
+  end
+
+  context "during a clean drop followed by recovery" do
+    context "when the center bar's low is lower than both neighbours" do
+      it "confirms the center bar as a swing low" do
+        push_candles([[102, 100], [101, 99], [100, 96], [101, 99], [102, 100]])
+        pivot = detector.detect(series, 5)
+
+        expect(pivot.direction).to eq :low
+        expect(pivot.level).to     eq 96
+      end
+    end
+  end
+
+  context "before the right-side confirmation window has filled" do
+    it "withholds emission until enough bars have arrived" do
       series << candle(open: 100, high: 102, low: 99, close: 101)
       expect(detector.detect(series, 1)).to be_nil
     end
   end
 
-  describe "pivot low detection" do
-    it "detects a pivot low when center is lower than left and right bars" do
-      # Pivot low at candle[2] (low=96), confirmed after pushing 5 candles.
-      push_candles([
-        [102, 100], [101, 99], [100, 96], [101, 99], [102, 100]
-      ])
-      pivot = detector.detect(series, 5)
-      expect(pivot).not_to be_nil
-      expect(pivot.direction).to eq :low
-      expect(pivot.level).to eq 96
+  context "during a monotonically rising series" do
+    it "produces no pivot because no bar is locally extreme" do
+      push_candles([[100, 99], [101, 100], [102, 101], [103, 102], [104, 103]])
+      expect(detector.detect(series, 5)).to be_nil
     end
   end
 
-  describe "no pivot" do
-    it "returns nil for a monotonically increasing series" do
-      push_candles([
-        [100, 99], [101, 100], [102, 101], [103, 102], [104, 103]
-      ])
+  context "when neighbouring bars share the same high" do
+    it "rejects the candidate as a swing high under strict greater-than confirmation" do
+      push_candles([[100, 98], [105, 103], [105, 103], [104, 102], [103, 101]])
       pivot = detector.detect(series, 5)
-      expect(pivot).to be_nil
-    end
-  end
 
-  describe "equal highs" do
-    it "does not detect pivot when a neighbor bar equals center high" do
-      # candle[1] and candle[2] both have high=105 — strict `>` check rejects the pivot.
-      push_candles([
-        [100, 98], [105, 103], [105, 103], [104, 102], [103, 101]
-      ])
-      pivot = detector.detect(series, 5)
       expect(pivot&.direction).not_to eq(:high)
     end
   end
