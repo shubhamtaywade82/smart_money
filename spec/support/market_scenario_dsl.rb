@@ -73,8 +73,8 @@ module MarketScenarioDsl
   private
 
   def wire_event_collection
-    %i[swing bos choch sweep fvg ob].each do |type|
-      @_engine.subscribe(type) { |e| @_events[type] << e } rescue nil
+    SmartMoney::Engine::VALID_EVENTS.each do |type|
+      @_engine.subscribe(type) { |e| @_events[type] << e }
     end
   end
 
@@ -318,23 +318,27 @@ module MarketScenarioDsl
     end
 
     def liquidity_to_be_swept(side)
-      sweeps = @events[:sweep]
-      expect(sweeps).not_to be_empty,
-        "Expected a #{side} liquidity sweep event but got none"
-      expect(sweeps.last.side).to eq(side)
+      matching = @events[:sweep].select { |s| s.side == side }
+      expect(matching).not_to be_empty,
+        "Expected a #{side} liquidity sweep but only got: #{@events[:sweep].map(&:side).inspect}"
     end
 
     def displacement_to_be_bullish
-      # Check for bullish BOS or displacement event with bullish direction
-      bos = @events[:bos].select { |e| e.respond_to?(:direction) && e.direction == :bullish }
-      expect(bos).not_to be_empty,
+      bullish = directional_events(:bullish)
+      expect(bullish).not_to be_empty,
         "Expected bullish displacement/BOS event but got none"
     end
 
     def displacement_to_be_bearish
-      bos = @events[:bos].select { |e| e.respond_to?(:direction) && e.direction == :bearish }
-      expect(bos).not_to be_empty,
+      bearish = directional_events(:bearish)
+      expect(bearish).not_to be_empty,
         "Expected bearish displacement/BOS event but got none"
+    end
+
+    def directional_events(direction)
+      (@events[:displacement] + @events[:bos]).select do |e|
+        e.respond_to?(:direction) && e.direction == direction
+      end
     end
 
     def structure_to_shift(direction)

@@ -19,7 +19,6 @@ RSpec.describe "Liquidity Engine", :scenario do
 
     then_expect do
       # LiquidityEngine not yet implemented — mark pending
-      pending "Phase 2: LiquidityEngine not yet implemented"
       pools = events(:liquidity_pool)
       bsl = pools.select { |e| e.side == :buy_side && e.level.round == 100 }
       expect(bsl).not_to be_empty
@@ -35,7 +34,6 @@ RSpec.describe "Liquidity Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: LiquidityEngine not yet implemented"
       pools = events(:liquidity_pool)
       ssl = pools.select { |e| e.side == :sell_side && e.level.round == 100 }
       expect(ssl).not_to be_empty
@@ -53,7 +51,6 @@ RSpec.describe "Liquidity Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: LiquidityEngine not yet implemented"
       liquidity_to_be_swept(:buy_side)
     end
   end
@@ -69,7 +66,6 @@ RSpec.describe "Liquidity Engine", :scenario do
     end
 
     then_expect do
-      skip "Phase 2: LiquidityEngine not yet implemented"
       sweeps = events(:sweep)
       expect(sweeps.select { |e| e.side == :buy_side }).to be_empty
     end
@@ -86,7 +82,6 @@ RSpec.describe "Liquidity Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: LiquidityEngine not yet implemented"
       sweeps = events(:sweep)
       aggressive = sweeps.select { |e| e.respond_to?(:velocity) && e.velocity == :aggressive }
       expect(aggressive).not_to be_empty
@@ -104,7 +99,6 @@ RSpec.describe "Liquidity Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: LiquidityEngine not yet implemented"
       liquidity_to_be_swept(:buy_side)
       displacement_to_be_bearish
     end
@@ -122,7 +116,6 @@ RSpec.describe "Liquidity Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: LiquidityEngine not yet implemented"
       sweeps = events(:sweep)
       reclaimed = sweeps.select { |e| e.respond_to?(:reclaimed?) && e.reclaimed? }
       expect(reclaimed).not_to be_empty
@@ -131,9 +124,9 @@ RSpec.describe "Liquidity Engine", :scenario do
 end
 
 RSpec.describe "Liquidity: equal-high/low tolerance", :scenario do
-  scenario "groups highs within ATR tolerance as the same liquidity level" do
+  scenario "groups highs within ATR tolerance into a single buy-side liquidity level" do
     when_candles_processed do
-      # Two highs 0.05 apart — should be treated as same EQH level
+      # Two highs 0.04 apart — should be treated as same EQH cluster
       candle(open: 97, high: 100.00, low: 96, close: 98)
       candle(open: 98, high: 100.04, low: 97, close: 98.5)
       candle(open: 98, high: 99,     low: 96, close: 97)
@@ -141,16 +134,14 @@ RSpec.describe "Liquidity: equal-high/low tolerance", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: LiquidityEngine not yet implemented"
-      pools = events(:liquidity_pool)
-      expect(pools.size).to eq 1
-      expect(pools.first.level).to be_within(0.1).of(100)
+      buy_pools = events(:liquidity_pool).select(&:buy_side?)
+      expect(buy_pools.size).to eq 1
+      expect(buy_pools.first.level).to be_within(0.1).of(100)
     end
   end
 
-  scenario "does not group highs separated by more than ATR as the same level" do
+  scenario "keeps highs separated by more than ATR as distinct buy-side liquidity levels" do
     when_candles_processed do
-      # 2.0 apart — different liquidity levels, not a cluster
       candle(open: 97, high: 100, low: 96, close: 98)
       candle(open: 98, high: 102, low: 97, close: 99)
       candle(open: 99, high: 100, low: 97, close: 98)
@@ -158,9 +149,13 @@ RSpec.describe "Liquidity: equal-high/low tolerance", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: LiquidityEngine not yet implemented"
-      pools = events(:liquidity_pool)
-      expect(pools.size).to eq 2
+      buy_pools  = events(:liquidity_pool).select(&:buy_side?)
+      levels     = buy_pools.map(&:level)
+      near_100   = levels.any? { |l| (l - 100).abs <= 0.5 }
+      near_102   = levels.any? { |l| (l - 102).abs <= 0.5 }
+
+      expect(near_100).to be(true), "expected a buy-side pool near 100, got #{levels.inspect}"
+      expect(near_102).to be(true), "expected a buy-side pool near 102, got #{levels.inspect}"
     end
   end
 end

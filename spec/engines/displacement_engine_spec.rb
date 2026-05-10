@@ -18,7 +18,6 @@ RSpec.describe "Displacement Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: DisplacementEngine not yet implemented"
       displacements = events(:displacement)
       bullish = displacements.select { |e| e.direction == :bullish }
       expect(bullish).not_to be_empty
@@ -34,7 +33,6 @@ RSpec.describe "Displacement Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: DisplacementEngine not yet implemented"
       displacements = events(:displacement)
       bearish = displacements.select { |e| e.direction == :bearish }
       expect(bearish).not_to be_empty
@@ -48,7 +46,6 @@ RSpec.describe "Displacement Engine", :scenario do
     end
 
     then_expect do
-      skip "Phase 2: DisplacementEngine not yet implemented"
       expect(events(:displacement)).to be_empty
     end
   end
@@ -62,7 +59,6 @@ RSpec.describe "Displacement Engine", :scenario do
     end
 
     then_expect do
-      skip "Phase 2: DisplacementEngine not yet implemented"
       displacements = events(:displacement)
       strong = displacements.select { |e| e.respond_to?(:strength) && e.strength == :strong }
       expect(strong).to be_empty
@@ -78,7 +74,6 @@ RSpec.describe "Displacement Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: DisplacementEngine not yet implemented"
       displacements = events(:displacement)
       multi_candle = displacements.select { |e| e.respond_to?(:candle_count) && e.candle_count > 1 }
       expect(multi_candle.last&.score).to be > displacements.first&.score
@@ -92,7 +87,6 @@ RSpec.describe "Displacement Engine", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: DisplacementEngine not yet implemented"
       displacements = events(:displacement)
       expect(displacements.last&.origin_candle&.timestamp).to eq Time.at(1_300)
     end
@@ -108,7 +102,6 @@ RSpec.describe "Displacement: imbalance (FVG) creation", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: FVG + DisplacementEngine not yet implemented"
       fvgs = events(:fvg)
       bullish = fvgs.select { |e| e.direction == :bullish }
       # FVG range: between candle[0].high (101.5) and candle[2].low (105.5)
@@ -126,7 +119,6 @@ RSpec.describe "Displacement: imbalance (FVG) creation", :scenario do
     end
 
     then_expect do
-      pending "Phase 2: FVG + DisplacementEngine not yet implemented"
       fvgs = events(:fvg)
       bearish = fvgs.select { |e| e.direction == :bearish }
       expect(bearish).not_to be_empty
@@ -141,7 +133,6 @@ RSpec.describe "Displacement: imbalance (FVG) creation", :scenario do
     end
 
     then_expect do
-      skip "Phase 2: FVG not yet implemented"
       expect(events(:fvg)).to be_empty
     end
   end
