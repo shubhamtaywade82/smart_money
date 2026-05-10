@@ -244,21 +244,74 @@ bundle exec rspec
 
 Spec categories:
 
-| File | Purpose |
-|------|---------|
-| `spec/smart_money/` | Unit tests for all core data structures and engines |
-| `spec/engines/swing_engine_spec.rb` | Swing pivot detection contract |
-| `spec/engines/structure_engine_spec.rb` | BOS/CHOCH correctness |
-| `spec/engines/liquidity_engine_spec.rb` | LiquidityEngine: pools, sweeps, reclaims, ATR tolerance |
-| `spec/engines/displacement_engine_spec.rb` | DisplacementEngine: body/ATR threshold, volume expansion, multi-candle streaks |
-| `spec/engines/fvg_engine_spec.rb` | FVG: detection, partial fill, mitigation |
-| `spec/engines/order_block_engine_spec.rb` | OB: validated origin, mitigation, invalidation |
-| `spec/multi_timeframe/` | HTF/LTF orchestration and bias alignment |
-| `spec/strategy/` | ConfluenceEngine: setup composition + scoring |
-| `spec/replay/deterministic_replay_spec.rb` | No future leakage + anti-repainting oracle |
-| `spec/acceptance/` | End-to-end scenarios in domain language |
+### Spec architecture
 
-Custom RSpec matchers live in `spec/support/matchers.rb` — `contain_buy_side_sweep`, `contain_bullish_displacement`, `contain_buy_side_pool(near: 100)`, etc.
+```
+spec/
+├── domain/
+│   ├── market_structure/   # SwingEngine, BOS/CHOCH, Displacement, FVG, OB
+│   ├── liquidity/          # LiquidityEngine, sweeps, reclaims
+│   └── confluence/         # ConfluenceEngine setup composition
+├── integration/            # Candle, CandleSeries, Engine wiring
+├── orchestration/          # Multi-timeframe BiasEngine
+├── replay/                 # Determinism / no future leakage / no repainting
+├── system/                 # Top-level trading playbooks (acceptance)
+└── support/
+    ├── builders/           # CandleFactory + scenario fixtures
+    ├── helpers/            # MarketScenarioDsl
+    ├── matchers/           # event / structural / signal / replay matchers
+    └── shared_contexts/    # bullish_trend, equal_highs_present, …
+```
+
+Specs read like institutional trading playbooks. Canonical context format:
+
+```ruby
+RSpec.describe "Liquidity sweep detection" do
+  context "during bearish reversal conditions" do
+    context "when buyside liquidity is swept and price rejects" do
+      include_context "equal_highs_present"
+
+      it "fires a buy-side sweep against the resting pool" do
+        expect(emitted_events[:sweep]).to contain_buy_side_sweep
+      end
+    end
+  end
+end
+```
+
+#### Shared contexts
+
+`bullish_trend`, `bearish_trend`, `range_environment`, `high_volatility`,
+`equal_highs_present`, `equal_lows_present`,
+`liquidity_sweep_confirmed`, `failed_reclaim`.
+
+Each context primes `engine`, `emitted_events`, and (where relevant)
+`liquidity_level` so example bodies focus on intent, not setup.
+
+#### Custom matchers
+
+Event-collection matchers (`spec/support/matchers/event_matchers.rb`):
+`contain_bullish_bos`, `contain_bearish_bos`, `contain_bullish_choch`,
+`contain_bearish_choch`, `contain_buy_side_sweep`, `contain_sell_side_sweep`,
+`contain_aggressive_sweep`, `contain_reclaimed_sweep`,
+`contain_buy_side_pool(near: 100)`, `contain_sell_side_pool(near: 100)`,
+`contain_bullish_displacement`, `contain_bearish_displacement`,
+`contain_bullish_fvg`, `contain_bearish_fvg`, `contain_mitigated_fvg`,
+`contain_bullish_order_block`, `contain_bearish_order_block`,
+`contain_mitigated_order_block`, `contain_invalidated_order_block`.
+
+Structural aliases (`structural_matchers.rb`):
+`confirm_bullish_bos`, `confirm_bearish_bos`,
+`confirm_bullish_choch`, `confirm_bearish_choch`,
+`have_displacement(:bullish | :bearish)`, `be_internal_only_break`.
+
+Signal matchers (`signal_matchers.rb`):
+`be_valid_long_signal`, `be_valid_short_signal`,
+`have_score_above(threshold)`, `include_order_block_confluence`.
+
+Replay invariants (`replay_matchers.rb`):
+`match_replay(other_run)` — fingerprint-based determinism check;
+`not_repaint_structure` — verifies earlier emissions persist after more candles arrive.
 
 ## Rails Integration
 

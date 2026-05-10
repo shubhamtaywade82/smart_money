@@ -33,7 +33,7 @@ module SmartMoney
       end
 
       def record_sweep(event)
-        return if event.reclaimed?
+        return invalidate_pending_at(event.swept_level) if event.reclaimed?
 
         @pending << {
           sweep:        event,
@@ -42,6 +42,10 @@ module SmartMoney
           born_at:      event.candle_index,
           order_block:  nil
         }
+      end
+
+      def invalidate_pending_at(level)
+        @pending.reject! { |entry| (entry[:sweep].swept_level - level).abs < 0.0001 }
       end
 
       def record_order_block(event)
